@@ -21,6 +21,19 @@ class Program
     // Bỏ qua bao nhiêu mod đầu tiên (dùng khi chạy lại giữa chừng)
     const int SkipIndex = 0;
 
+    // Profile Edge để GIỮ phiên đăng nhập NexusMods (vượt Cloudflare captcha).
+    //
+    // CÁCH 1 (khuyên dùng - profile SẴN CÓ đã đăng nhập):
+    //   UserDataDir     = thư mục "User Data" của Edge
+    //   ProfileDirectory= tên FOLDER profile (không phải tên hiển thị), xem tại edge://version -> "Profile Path"
+    //   => PHẢI đóng hết Edge trước khi chạy tool (Edge không share profile đang mở cho Selenium).
+    //
+    // CÁCH 2 (profile riêng cho tool): UserDataDir trỏ tới folder trống, đăng nhập 1 lần bằng Edge thường.
+    const string UserDataDir = @"C:\Users\tienpa\AppData\Local\Microsoft\Edge\User Data";
+
+    // Tên folder profile: "Default" hoặc "Profile 1" ... (xem edge://version -> Profile Path)
+    const string ProfileDirectory = "Default";
+
     static void Main()
     {
         // game domain nằm ngay sau host trong CollectionUrl, ví dụ "skyrimspecialedition"
@@ -29,6 +42,16 @@ class Program
 
         var options = new EdgeOptions();
         options.AddArgument("--start-maximized");
+
+        // Dùng lại profile đã đăng nhập -> bỏ qua trang login + Cloudflare captcha
+        options.AddArgument($"--user-data-dir={UserDataDir}");
+        options.AddArgument($"--profile-directory={ProfileDirectory}");
+
+        // Giảm dấu hiệu "trình duyệt bị tự động hoá" để Cloudflare Turnstile không chặn
+        options.AddArgument("--disable-blink-features=AutomationControlled");
+        options.AddExcludedArgument("enable-automation");
+        options.AddAdditionalEdgeOption("useAutomationExtension", false);
+
         options.AddExtension(IdmExtensionPath);
 
         // Thêm uBlock Extension (nếu cần)
@@ -37,9 +60,24 @@ class Program
         var service = EdgeDriverService.CreateDefaultService(DriverPath);
         var driver = new EdgeDriver(service, options);
 
-        // NexusMods yêu cầu đăng nhập mới tải được -> mở trang login rồi chờ user đăng nhập tay
-        driver.Navigate().GoToUrl("https://users.nexusmods.com/auth/sign_in");
-        Console.WriteLine("Hãy đăng nhập NexusMods trong trình duyệt, xong rồi ấn ENTER ở cửa sổ này để tiếp tục...");
+        // Ẩn navigator.webdriver trước khi trang tải (belt-and-suspenders chống phát hiện automation)
+        try
+        {
+            driver.ExecuteCdpCommand("Page.addScriptToEvaluateOnNewDocument",
+                new Dictionary<string, object>
+                {
+                    ["source"] = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Không set được CDP override (bỏ qua): " + ex.Message);
+        }
+
+        // Với profile đã đăng nhập, thường không cần login lại. Vẫn chừa 1 nhịp để
+        // bạn tự xử lý nếu còn Cloudflare check / chưa đăng nhập.
+        driver.Navigate().GoToUrl("https://www.nexusmods.com/");
+        Console.WriteLine("Nếu còn Cloudflare check hoặc chưa đăng nhập: xử lý trong trình duyệt rồi ấn ENTER để tiếp tục...");
         Console.ReadLine();
 
         // Mở trang collection
