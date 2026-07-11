@@ -120,38 +120,28 @@ class Program
                 driver.SwitchTo().Window(driver.WindowHandles.Last());
                 Thread.Sleep(4000);
 
-                // 1) Click the "Manual" button on the file card -> a popup appears
-                IWebElement? manualBtn = null;
-                WaitFor(() => { manualBtn = FindByText(driver, "button", "Manual"); return manualBtn != null; }, 8000);
-                if (manualBtn == null)
+                // The download UI is inside a Web Component (<mod-download-modal>) Shadow DOM,
+                // so we must click via JS that pierces shadow roots (DeepClick).
+
+                // 1) Click the "Manual" button -> the download popup opens
+                bool manualClicked = false;
+                WaitFor(() => { manualClicked = DeepClick(driver, "button", "Manual"); return manualClicked; }, 8000);
+                if (!manualClicked)
                 {
                     Console.WriteLine("  'Manual' button not found -> skip.");
                 }
                 else
                 {
-                    ClickJs(driver, manualBtn);
-
-                    // 2) In the popup, click the "Manual download" link (href .../api/files/<id>/download)
-                    IWebElement? manualDl = null;
-                    WaitFor(() =>
-                    {
-                        manualDl = driver.FindElements(By.CssSelector("a[href*='/api/files/']")).FirstOrDefault()
-                                   ?? FindByText(driver, "a", "Manual download");
-                        return manualDl != null;
-                    }, 6000);
-
-                    if (manualDl != null)
-                        ClickJs(driver, manualDl);
-                    else
+                    // 2) In the popup: click the "Manual download" link (href .../api/files/<id>/download)
+                    bool manualDlClicked = false;
+                    WaitFor(() => { manualDlClicked = DeepClick(driver, "a[href*='/api/files/']", ""); return manualDlClicked; }, 6000);
+                    if (!manualDlClicked)
                         Console.WriteLine("  'Manual download' link not found.");
 
                     // 3) Click the "Slow download" button (free tier)
-                    IWebElement? slowBtn = null;
-                    WaitFor(() => { slowBtn = FindByText(driver, "button", "Slow download"); return slowBtn != null; }, 8000);
-
-                    if (slowBtn != null)
-                        ClickJs(driver, slowBtn);
-                    else
+                    bool slowClicked = false;
+                    WaitFor(() => { slowClicked = DeepClick(driver, "button", "Slow download"); return slowClicked; }, 8000);
+                    if (!slowClicked)
                         Console.WriteLine("  'Slow download' button not found (maybe Premium / already downloading).");
                 }
 
@@ -328,21 +318,42 @@ class Program
         }
     }
 
-    // Find the first element matching a CSS selector whose visible text equals `text`
-    static IWebElement? FindByText(IWebDriver driver, string css, string text)
-    {
-        return driver.FindElements(By.CssSelector(css))
-            .FirstOrDefault(e =>
-            {
-                try { return string.Equals((e.Text ?? "").Trim(), text, StringComparison.OrdinalIgnoreCase); }
-                catch (WebDriverException) { return false; }
-            });
+    // JS: search light DOM + every shadow root (Web Components) for the first element
+    // matching `selector` (and, if `text` is non-empty, whose trimmed text equals it),
+    // then click it. Returns true if something was clicked.
+    const string DeepClickJs = @"
+const selector = arguments[0];
+const text = (arguments[1] || '').trim().toLowerCase();
+function search(root){
+  let nodes = [];
+  try { nodes = root.querySelectorAll(selector); } catch (e) {}
+  for (const el of nodes){
+    if (text === '' || (el.textContent || '').trim().toLowerCase() === text){
+      el.click();
+      return true;
     }
+  }
+  const all = root.querySelectorAll('*');
+  for (const el of all){
+    if (el.shadowRoot && search(el.shadowRoot)) return true;
+  }
+  return false;
+}
+return search(document);
+";
 
-    // Click an element via JavaScript (robust against overlays / interception)
-    static void ClickJs(IWebDriver driver, IWebElement el)
+    // Click an element by CSS selector (and optional exact text), piercing shadow DOM
+    static bool DeepClick(EdgeDriver driver, string selector, string text)
     {
-        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", el);
+        try
+        {
+            var r = ((IJavaScriptExecutor)driver).ExecuteScript(DeepClickJs, selector, text ?? "");
+            return r is bool b && b;
+        }
+        catch (WebDriverException)
+        {
+            return false;
+        }
     }
 
     // Helper: wait until cond() is true, polling every stepMs (no extra NuGet needed)
