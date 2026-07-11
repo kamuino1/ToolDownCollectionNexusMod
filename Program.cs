@@ -40,6 +40,10 @@ class Program
         string gameDomain = ParseGameDomain(CollectionUrl);
         Console.WriteLine($"Game domain: {gameDomain}");
 
+        // Edge phải đóng hoàn toàn thì Selenium mới dùng được profile (nếu không -> SessionNotCreated:
+        // "cannot create default profile directory"). Tắt sạch tiến trình Edge còn sót lại.
+        KillEdgeProcesses();
+
         var options = new EdgeOptions();
         options.AddArgument("--start-maximized");
 
@@ -154,6 +158,24 @@ class Program
 
         driver.Quit();
         Console.WriteLine("Hoàn tất!");
+    }
+
+    // Tắt mọi tiến trình Edge/driver còn chạy để giải phóng khoá profile
+    static void KillEdgeProcesses()
+    {
+        foreach (var name in new[] { "msedge", "msedgedriver" })
+        {
+            foreach (var p in Process.GetProcessesByName(name))
+            {
+                try
+                {
+                    p.Kill(true);          // kill cả cây tiến trình con
+                    p.WaitForExit(3000);
+                }
+                catch { /* đã thoát / không kill được -> bỏ qua */ }
+            }
+        }
+        Thread.Sleep(1000); // chờ Windows giải phóng file lock (SingletonLock)
     }
 
     // Lấy game domain (segment ngay sau host) từ CollectionUrl
