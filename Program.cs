@@ -2,6 +2,7 @@ using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Edge;
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 //135.0.3179.66
@@ -32,6 +33,15 @@ class Program
 
     // Profile folder name: "Default" or "Profile 1" ... (see edge://version -> Profile Path)
     const string ProfileDirectory = "Profile 1";
+
+    // Folder where the progress CSV is written
+    const string OutputDir = @"D:\1\Tool\ToolDownCollectionNexusMod";
+
+    // Progress file (name + link + step of each mod), rewritten live while the tool runs.
+    // The current date/time is stamped into the file name when the program starts,
+    // e.g. collection_progress_2026-07-12_01-15-03.csv
+    static readonly string OutputCsvPath =
+        Path.Combine(OutputDir, $"collection_progress_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.csv");
 
     static void Main()
     {
@@ -87,13 +97,24 @@ class Program
         driver.Navigate().GoToUrl(CollectionUrl);
         Thread.Sleep(4000);
 
-        // ====== PHASE 1: Collect mod links ======
-        var modLinks = CollectModLinks(driver, gameDomain)
+        // ====== PHASE 1: Collect mods (name + link) ======
+        var mods = CollectModLinks(driver, gameDomain)
             .Skip(SkipIndex)
             .ToList();
 
-        Console.WriteLine($"Found {modLinks.Count} mods in the collection.");
-        if (modLinks.Count == 0)
+        // Re-number after Skip and mark all as pending
+        for (int i = 0; i < mods.Count; i++)
+        {
+            mods[i].Index = i + 1;
+            mods[i].Status = "pending";
+            mods[i].UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        Console.WriteLine($"Found {mods.Count} mods in the collection.");
+        SaveProgress(mods); // write the initial CSV (name + link + status)
+        Console.WriteLine($"Progress file: {OutputCsvPath}");
+
+        if (mods.Count == 0)
         {
             Console.WriteLine("No mod links collected. Check CollectionUrl / login / selectors.");
             driver.Quit();
@@ -103,14 +124,11 @@ class Program
         // ====== PHASE 2: Download each mod (open in a new tab) ======
         string mainTab = driver.WindowHandles.First();
 
-        int index = 0;
-        foreach (var modUrl in modLinks)
+        foreach (var mod in mods)
         {
-            index++;
-
             // Normalize to the mod's Files tab
-            string filesUrl = modUrl.Contains("?") ? modUrl + "&tab=files" : modUrl + "?tab=files";
-            Console.WriteLine($"[{index}/{modLinks.Count}] {filesUrl}");
+            string filesUrl = mod.Url.Contains("?") ? mod.Url + "&tab=files" : mod.Url + "?tab=files";
+            Console.WriteLine($"[{mod.Index}/{mods.Count}] {mod.Name} -> {filesUrl}");
 
             try
             {
@@ -119,6 +137,7 @@ class Program
                 Thread.Sleep(1000);
                 driver.SwitchTo().Window(driver.WindowHandles.Last());
                 Thread.Sleep(4000);
+                SetStatus(mods, mod, "opened");
 
                 // The download UI is inside a Web Component (<mod-download-modal>) Shadow DOM,
                 // so we must click via JS that pierces shadow roots (DeepClick).
@@ -129,28 +148,49 @@ class Program
                 if (!manualClicked)
                 {
                     Console.WriteLine("  'Manual' button not found -> skip.");
+                    SetStatus(mods, mod, "manual-not-found");
                 }
                 else
                 {
+                    SetStatus(mods, mod, "manual-clicked");
+
                     // 2) In the popup: click the "Manual download" link (href .../api/files/<id>/download)
                     bool manualDlClicked = false;
                     WaitFor(() => { manualDlClicked = DeepClick(driver, "a[href*='/api/files/']", ""); return manualDlClicked; }, 6000);
-                    if (!manualDlClicked)
+                    if (manualDlClicked)
+                    {
+                        SetStatus(mods, mod, "manualdl-clicked");
+                    }
+                    else
+                    {
                         Console.WriteLine("  'Manual download' link not found.");
+                        SetStatus(mods, mod, "manualdl-not-found");
+                    }
 
                     // 3) Click the "Slow download" button (free tier)
                     bool slowClicked = false;
                     WaitFor(() => { slowClicked = DeepClick(driver, "button", "Slow download"); return slowClicked; }, 8000);
-                    if (!slowClicked)
+                    if (slowClicked)
+                    {
+                        SetStatus(mods, mod, "slow-clicked");
+                    }
+                    else
+                    {
                         Console.WriteLine("  'Slow download' button not found (maybe Premium / already downloading).");
+                        SetStatus(mods, mod, "slow-not-found");
+                    }
                 }
 
                 // Wait ~6s for the download to start
                 Thread.Sleep(6000);
+
+                if (mod.Status == "slow-clicked" || mod.Status == "manualdl-clicked")
+                    SetStatus(mods, mod, "done");
             }
             catch (WebDriverException ex)
             {
                 Console.WriteLine("  Error while processing mod: " + ex.Message);
+                SetStatus(mods, mod, "error: " + ex.Message.Replace("\r", " ").Replace("\n", " "));
             }
             finally
             {
@@ -168,7 +208,8 @@ class Program
         }
 
         driver.Quit();
-        Console.WriteLine("Done!");
+        SaveProgress(mods);
+        Console.WriteLine("Done! Progress saved to: " + OutputCsvPath);
     }
 
     // Kill any running Edge/driver processes to release the profile lock
@@ -215,7 +256,7 @@ class Program
     // The new collection page renders a TABLE: each mod is a <tr class="collection-mod-row">,
     // and the mod name is just a <span> (no link). The mod link only appears when you HOVER a row
     // -> the site creates a <div data-floating-ui-portal> containing an <a href=".../mods/<id>">.
-    static List<string> CollectModLinks(EdgeDriver driver, string gameDomain)
+    static List<ModEntry> CollectModLinks(EdgeDriver driver, string gameDomain)
     {
         // Wait for the mod table to load
         WaitFor(() => driver.FindElements(By.CssSelector("tr.collection-mod-row")).Count > 0, 20000);
@@ -224,7 +265,7 @@ class Program
         int rowCount = rows.Count;
         Console.WriteLine($"[Mods] Found {rowCount} mod rows in the table.");
 
-        var result = new List<string>();
+        var result = new List<ModEntry>();
 
         for (int i = 0; i < rowCount; i++)
         {
@@ -235,9 +276,11 @@ class Program
 
             try
             {
-                // Hover target: the mod-name cell (fallback: the whole row)
-                var hoverTarget = row.FindElements(By.CssSelector(".collection-mod-row__mod-name-container"))
-                                     .FirstOrDefault() ?? row;
+                // Mod name lives in the name cell; use it both as hover target and as the display name
+                var nameEl = row.FindElements(By.CssSelector(".collection-mod-row__mod-name-container"))
+                                .FirstOrDefault();
+                string name = nameEl != null ? (nameEl.Text ?? "").Trim() : $"row-{i + 1}";
+                var hoverTarget = nameEl ?? row;
 
                 ((IJavaScriptExecutor)driver).ExecuteScript(
                     "arguments[0].scrollIntoView({block:'center'});", hoverTarget);
@@ -254,14 +297,14 @@ class Program
                     return href != null;
                 }, timeoutMs: 3000);
 
-                if (!string.IsNullOrEmpty(href) && !result.Contains(href))
+                if (!string.IsNullOrEmpty(href) && !result.Any(m => m.Url == href))
                 {
-                    result.Add(href);
-                    Console.WriteLine($"  [{result.Count}/{rowCount}] {href}");
+                    result.Add(new ModEntry { Name = name, Url = href });
+                    Console.WriteLine($"  [{result.Count}/{rowCount}] {name} -> {href}");
                 }
                 else if (href == null)
                 {
-                    Console.WriteLine($"  [--/{rowCount}] Could not get a link for row {i + 1}");
+                    Console.WriteLine($"  [--/{rowCount}] Could not get a link for row {i + 1} ({name})");
                 }
 
                 // Move the cursor to the top-left corner to close the tooltip before the next row
@@ -274,7 +317,7 @@ class Program
             }
         }
 
-        return result.Distinct().ToList();
+        return result;
     }
 
     // Find one href that points to a mod page (.../mods/<id>) inside the currently open portal
@@ -375,4 +418,56 @@ return search(document);
         }
         return false;
     }
+
+    // Update one mod's status + timestamp, log it, and rewrite the progress file
+    static void SetStatus(List<ModEntry> mods, ModEntry mod, string status)
+    {
+        mod.Status = status;
+        mod.UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        Console.WriteLine($"    -> {status}");
+        SaveProgress(mods);
+    }
+
+    // Rewrite the whole progress CSV (always a current snapshot of every mod)
+    static void SaveProgress(List<ModEntry> mods)
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Index,Name,Url,Status,UpdatedAt");
+            foreach (var m in mods)
+            {
+                sb.AppendLine(string.Join(",",
+                    m.Index,
+                    CsvEscape(m.Name),
+                    CsvEscape(m.Url),
+                    CsvEscape(m.Status),
+                    CsvEscape(m.UpdatedAt)));
+            }
+            File.WriteAllText(OutputCsvPath, sb.ToString(), new UTF8Encoding(true));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Could not write progress file: " + ex.Message);
+        }
+    }
+
+    // Escape a value for CSV (quote it if it contains a comma/quote/newline)
+    static string CsvEscape(string? s)
+    {
+        s ??= "";
+        if (s.Contains('"') || s.Contains(',') || s.Contains('\n') || s.Contains('\r'))
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
+        return s;
+    }
+}
+
+// One row of the collection: mod name, link, and current processing step
+class ModEntry
+{
+    public int Index;
+    public string Name = "";
+    public string Url = "";
+    public string Status = "pending";
+    public string UpdatedAt = "";
 }

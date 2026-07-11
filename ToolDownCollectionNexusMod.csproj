@@ -9,6 +9,14 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
+	<!-- RetryFailedMods is a separate project living in a subfolder; don't compile it into this one -->
+	<ItemGroup>
+		<Compile Remove="RetryFailedMods\**" />
+		<Content Remove="RetryFailedMods\**" />
+		<None Remove="RetryFailedMods\**" />
+		<EmbeddedResource Remove="RetryFailedMods\**" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Selenium.WebDriver" Version="4.31.0" />
 		<PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="135.0.7049.8400" />
