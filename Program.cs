@@ -193,123 +193,95 @@ class Program
         }
     }
 
+    // Chỉ khớp link trang mod thật: .../mods/<số> (loại /mods (không id) và /collections/...)
+    static readonly Regex ModLinkRegex = new Regex(@"/mods/\d+(\b|$|[/?#])");
+
     // ====== PHASE 1: Thu thập tất cả link trang mod trong collection ======
+    // Trang collection mới render dạng BẢNG: mỗi mod là 1 <tr class="collection-mod-row">,
+    // tên mod chỉ là <span> (không có link). Link trang mod chỉ xuất hiện khi HOVER vào dòng
+    // -> site sinh ra <div data-floating-ui-portal> chứa thẻ <a href=".../mods/<id>">.
     static List<string> CollectModLinks(IWebDriver driver, string gameDomain)
     {
-        // Bấm sang tab "Mods" để dữ liệu mod được render ra document
-        ClickModsTab(driver);
-        Thread.Sleep(2000);
+        // Chờ bảng mod load xong
+        WaitFor(() => driver.FindElements(By.CssSelector("tr.collection-mod-row")).Count > 0, 20000);
 
-        // --- Layer A: đọc dữ liệu nhúng trong page source ---
-        var links = ExtractLinksFromPageSource(driver, gameDomain);
-        if (links.Count > 0)
-        {
-            Console.WriteLine($"[Layer A] Lấy link từ page source: {links.Count} mod.");
-            return links;
-        }
+        var rows = driver.FindElements(By.CssSelector("tr.collection-mod-row"));
+        int rowCount = rows.Count;
+        Console.WriteLine($"[Mods] Tìm thấy {rowCount} dòng mod trong bảng.");
 
-        // --- Layer B: hover từng tile để lấy link trong floating-ui-portal ---
-        Console.WriteLine("[Layer A] Không thấy link -> chuyển sang [Layer B] hover từng tile...");
-        links = ExtractLinksByHover(driver);
-        Console.WriteLine($"[Layer B] Lấy link bằng hover: {links.Count} mod.");
-        return links;
-    }
-
-    // Layer A: regex quét page source tìm các tham chiếu /<game>/mods/<id>
-    static List<string> ExtractLinksFromPageSource(IWebDriver driver, string gameDomain)
-    {
-        if (string.IsNullOrEmpty(gameDomain))
-            return new List<string>();
-
-        string html = driver.PageSource;
-        var pattern = $@"/{Regex.Escape(gameDomain)}/mods/(\d+)";
-        var ids = Regex.Matches(html, pattern)
-            .Select(m => m.Groups[1].Value)
-            .Distinct()
-            .ToList();
-
-        return ids
-            .Select(id => $"https://www.nexusmods.com/{gameDomain}/mods/{id}")
-            .ToList();
-    }
-
-    // Layer B: hover từng tile mod, đọc <a> sinh ra trong div[data-floating-ui-portal]
-    static List<string> ExtractLinksByHover(IWebDriver driver)
-    {
         var result = new List<string>();
         var actions = new Actions(driver);
 
-        // Selector tile mod - có thể cần chỉnh theo DOM thực tế
-        var tiles = driver.FindElements(By.CssSelector("[data-e2eid='mod-tile'], article, li"));
-        Console.WriteLine($"[Layer B] Tìm thấy {tiles.Count} tile ứng viên.");
-
-        foreach (var tile in tiles)
+        for (int i = 0; i < rowCount; i++)
         {
+            // Re-fetch theo index vì DOM có thể thay đổi (portal/expand) làm element stale
+            var freshRows = driver.FindElements(By.CssSelector("tr.collection-mod-row"));
+            if (i >= freshRows.Count) break;
+            var row = freshRows[i];
+
             try
             {
-                actions.MoveToElement(tile).Perform();
+                // Phần tử hover: ô tên mod (fallback: cả dòng)
+                var hoverTarget = row.FindElements(By.CssSelector(".collection-mod-row__mod-name-container"))
+                                     .FirstOrDefault() ?? row;
 
-                // Chờ portal + <a> xuất hiện
-                IWebElement? anchor = null;
+                ((IJavaScriptExecutor)driver).ExecuteScript(
+                    "arguments[0].scrollIntoView({block:'center'});", hoverTarget);
+                actions.MoveToElement(hoverTarget).Perform();
+
+                // Chờ portal (hoặc bất kỳ link /mods/<id> mới) xuất hiện
+                string? href = null;
                 WaitFor(() =>
                 {
-                    var found = driver.FindElements(
-                        By.CssSelector("div[data-floating-ui-portal] a[href*='/mods/']"));
-                    if (found.Count > 0)
-                    {
-                        anchor = found[0];
-                        return true;
-                    }
-                    return false;
-                }, timeoutMs: 2000);
+                    href = FindModHref(driver);
+                    return href != null;
+                }, timeoutMs: 2500);
 
-                if (anchor != null)
+                // Fallback: nếu hover không ra link, thử bấm nút mũi tên để mở rộng dòng
+                if (href == null)
                 {
-                    string href = anchor.GetAttribute("href");
-                    if (!string.IsNullOrEmpty(href) && !result.Contains(href))
-                        result.Add(href);
+                    var arrow = row.FindElements(By.CssSelector("button.collection-mod-row__arrow-button"))
+                                   .FirstOrDefault();
+                    if (arrow != null)
+                    {
+                        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", arrow);
+                        WaitFor(() => { href = FindModHref(driver); return href != null; }, 2500);
+                        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", arrow); // thu gọn lại
+                    }
                 }
 
-                // Rời chuột để portal đóng lại trước khi hover tile kế
-                actions.MoveToElement(driver.FindElement(By.TagName("body")), 0, 0).Perform();
-                Thread.Sleep(200);
+                if (!string.IsNullOrEmpty(href) && !result.Contains(href))
+                {
+                    result.Add(href);
+                    Console.WriteLine($"  [{result.Count}/{rowCount}] {href}");
+                }
+                else if (href == null)
+                {
+                    Console.WriteLine($"  [--/{rowCount}] Không lấy được link ở dòng {i + 1}");
+                }
+
+                // Rời chuột để đóng portal trước khi sang dòng kế
+                actions.MoveToElement(driver.FindElement(By.TagName("h1"))).Perform();
+                Thread.Sleep(120);
             }
             catch (WebDriverException)
             {
-                // tile không hover được / stale -> bỏ qua
+                // dòng stale / không hover được -> bỏ qua
             }
         }
 
         return result.Distinct().ToList();
     }
 
-    // Bấm tab "Mods" trong collection (bỏ qua nếu không tìm thấy)
-    static void ClickModsTab(IWebDriver driver)
+    // Tìm 1 href trỏ tới trang mod (.../mods/<id>) trong portal hiện đang mở
+    static string? FindModHref(IWebDriver driver)
     {
-        try
-        {
-            var tab = driver.FindElements(By.CssSelector("a, button, [role='tab']"))
-                .FirstOrDefault(e =>
-                {
-                    string text = (e.Text ?? "").Trim();
-                    return text.Equals("Mods", StringComparison.OrdinalIgnoreCase)
-                        || text.StartsWith("Mods", StringComparison.OrdinalIgnoreCase);
-                });
-
-            if (tab != null)
-            {
-                ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", tab);
-                Console.WriteLine("Đã bấm tab Mods.");
-            }
-            else
-            {
-                Console.WriteLine("Không tìm thấy tab Mods (có thể mặc định đã ở tab Mods).");
-            }
-        }
-        catch (WebDriverException)
-        {
-            Console.WriteLine("Lỗi khi bấm tab Mods, tiếp tục...");
-        }
+        return driver
+            .FindElements(By.CssSelector("div[data-floating-ui-portal] a[href*='/mods/']"))
+            .Select(a => a.GetAttribute("href"))
+            .FirstOrDefault(h => !string.IsNullOrEmpty(h)
+                                 && ModLinkRegex.IsMatch(h)
+                                 && !h.Contains("/collections/"));
     }
 
     // Helper: chờ điều kiện cond đúng, poll mỗi stepMs (không cần thêm NuGet)
