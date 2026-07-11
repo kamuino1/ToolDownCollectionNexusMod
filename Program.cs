@@ -10,7 +10,7 @@ class Program
 {
     // ====== CẤU HÌNH ======
     // Link collection trên NexusMods (dạng mới: https://next.nexusmods.com/<game>/collections/<slug>)
-    const string CollectionUrl = "https://next.nexusmods.com/skyrimspecialedition/collections/xxxxxx";
+    const string CollectionUrl = "https://www.nexusmods.com/games/stardewvalley/collections/tckf0m/mods";
 
     // Đường dẫn tới folder chứa msedgedriver.exe
     const string DriverPath = @"D:\1\Tool\ToolDownCollectionNexusMod\driver";
@@ -29,10 +29,10 @@ class Program
     //   => PHẢI đóng hết Edge trước khi chạy tool (Edge không share profile đang mở cho Selenium).
     //
     // CÁCH 2 (profile riêng cho tool): UserDataDir trỏ tới folder trống, đăng nhập 1 lần bằng Edge thường.
-    const string UserDataDir = @"C:\Users\tienpa\AppData\Local\Microsoft\Edge\User Data";
+    const string UserDataDir = @"D:\Temp";
 
     // Tên folder profile: "Default" hoặc "Profile 1" ... (xem edge://version -> Profile Path)
-    const string ProfileDirectory = "Default";
+    const string ProfileDirectory = "Profile 1";
 
     static void Main()
     {
@@ -48,15 +48,15 @@ class Program
         options.AddArgument("--start-maximized");
 
         // Dùng lại profile đã đăng nhập -> bỏ qua trang login + Cloudflare captcha
-        options.AddArgument($"--user-data-dir={UserDataDir}");
-        options.AddArgument($"--profile-directory={ProfileDirectory}");
+        options.AddArgument($"user-data-dir={UserDataDir}");
+        options.AddArgument($"profile-directory={ProfileDirectory}");
 
         // Giảm dấu hiệu "trình duyệt bị tự động hoá" để Cloudflare Turnstile không chặn
         options.AddArgument("--disable-blink-features=AutomationControlled");
         options.AddExcludedArgument("enable-automation");
         options.AddAdditionalEdgeOption("useAutomationExtension", false);
 
-        options.AddExtension(IdmExtensionPath);
+        //options.AddExtension(IdmExtensionPath);
 
         // Thêm uBlock Extension (nếu cần)
         //options.AddExtension(@"D:\1\Tool\ToolDownCollectionNexusMod\extension\ublock.crx");
