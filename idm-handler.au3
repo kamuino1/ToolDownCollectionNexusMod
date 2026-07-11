@@ -7,7 +7,7 @@ While 1
         Sleep(1000)
         Send("{ENTER}") ; Start Download
         Sleep(2000)
-        Send("^p") ; Pause ngay sau khi IDM bắt đầu tải
+        Send("^p") ; Pause right after IDM starts downloading
         ExitLoop
     EndIf
     Sleep(500)

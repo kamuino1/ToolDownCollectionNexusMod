@@ -1,70 +1,69 @@
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Edge;
-using OpenQA.Selenium.Interactions;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
 //135.0.3179.66
 class Program
 {
-    // ====== CẤU HÌNH ======
-    // Link collection trên NexusMods (dạng mới: https://next.nexusmods.com/<game>/collections/<slug>)
+    // ====== CONFIG ======
+    // NexusMods collection URL (mods tab), e.g. .../games/<game>/collections/<slug>/mods
     const string CollectionUrl = "https://www.nexusmods.com/games/stardewvalley/collections/tckf0m/mods";
 
-    // Đường dẫn tới folder chứa msedgedriver.exe
+    // Folder that contains msedgedriver.exe
     const string DriverPath = @"D:\1\Tool\ToolDownCollectionNexusMod\driver";
 
-    // Đường dẫn tới IDM extension (.crx) - tương tự bản FitGirl
+    // Path to the IDM browser extension (.crx) - same as the FitGirl build
     const string IdmExtensionPath = @"C:\Program Files (x86)\Internet Download Manager\IDMGCExt.crx";
 
-    // Bỏ qua bao nhiêu mod đầu tiên (dùng khi chạy lại giữa chừng)
+    // How many mods to skip from the start (useful when resuming a partial run)
     const int SkipIndex = 0;
 
-    // Profile Edge để GIỮ phiên đăng nhập NexusMods (vượt Cloudflare captcha).
+    // Edge profile used to KEEP the NexusMods login session (to get past the Cloudflare captcha).
     //
-    // CÁCH 1 (khuyên dùng - profile SẴN CÓ đã đăng nhập):
-    //   UserDataDir     = thư mục "User Data" của Edge
-    //   ProfileDirectory= tên FOLDER profile (không phải tên hiển thị), xem tại edge://version -> "Profile Path"
-    //   => PHẢI đóng hết Edge trước khi chạy tool (Edge không share profile đang mở cho Selenium).
+    // OPTION 1 (recommended - an EXISTING logged-in profile):
+    //   UserDataDir      = the Edge "User Data" folder
+    //   ProfileDirectory = the profile FOLDER name (not the display name); see edge://version -> "Profile Path"
+    //   => Edge MUST be fully closed before running the tool (Edge won't share an open profile with Selenium).
     //
-    // CÁCH 2 (profile riêng cho tool): UserDataDir trỏ tới folder trống, đăng nhập 1 lần bằng Edge thường.
+    // OPTION 2 (a dedicated profile for the tool): point UserDataDir at an empty folder, log in once with normal Edge.
     const string UserDataDir = @"D:\Temp";
 
-    // Tên folder profile: "Default" hoặc "Profile 1" ... (xem edge://version -> Profile Path)
+    // Profile folder name: "Default" or "Profile 1" ... (see edge://version -> Profile Path)
     const string ProfileDirectory = "Profile 1";
 
     static void Main()
     {
-        // game domain nằm ngay sau host trong CollectionUrl, ví dụ "skyrimspecialedition"
+        // The game domain is the path segment right after the host, e.g. "stardewvalley"
         string gameDomain = ParseGameDomain(CollectionUrl);
         Console.WriteLine($"Game domain: {gameDomain}");
 
-        // Edge phải đóng hoàn toàn thì Selenium mới dùng được profile (nếu không -> SessionNotCreated:
-        // "cannot create default profile directory"). Tắt sạch tiến trình Edge còn sót lại.
+        // Edge must be fully closed for Selenium to use the profile (otherwise -> SessionNotCreated:
+        // "cannot create default profile directory"). Kill any leftover Edge processes.
         KillEdgeProcesses();
 
         var options = new EdgeOptions();
         options.AddArgument("--start-maximized");
 
-        // Dùng lại profile đã đăng nhập -> bỏ qua trang login + Cloudflare captcha
+        // Reuse the logged-in profile -> skip the login page + Cloudflare captcha
         options.AddArgument($"user-data-dir={UserDataDir}");
         options.AddArgument($"profile-directory={ProfileDirectory}");
 
-        // Giảm dấu hiệu "trình duyệt bị tự động hoá" để Cloudflare Turnstile không chặn
+        // Reduce "automation-controlled browser" signals so Cloudflare Turnstile doesn't block us
         options.AddArgument("--disable-blink-features=AutomationControlled");
         options.AddExcludedArgument("enable-automation");
         options.AddAdditionalEdgeOption("useAutomationExtension", false);
 
         //options.AddExtension(IdmExtensionPath);
 
-        // Thêm uBlock Extension (nếu cần)
+        // Add the uBlock extension (if needed)
         //options.AddExtension(@"D:\1\Tool\ToolDownCollectionNexusMod\extension\ublock.crx");
 
         var service = EdgeDriverService.CreateDefaultService(DriverPath);
         var driver = new EdgeDriver(service, options);
 
-        // Ẩn navigator.webdriver trước khi trang tải (belt-and-suspenders chống phát hiện automation)
+        // Hide navigator.webdriver before the page loads (belt-and-suspenders anti-automation-detection)
         try
         {
             driver.ExecuteCdpCommand("Page.addScriptToEvaluateOnNewDocument",
@@ -75,92 +74,114 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Không set được CDP override (bỏ qua): " + ex.Message);
+            Console.WriteLine("Could not set CDP override (skipping): " + ex.Message);
         }
 
-        // Với profile đã đăng nhập, thường không cần login lại. Vẫn chừa 1 nhịp để
-        // bạn tự xử lý nếu còn Cloudflare check / chưa đăng nhập.
+        // With a logged-in profile you usually don't need to log in again. Still pause once so you
+        // can handle a Cloudflare check / login by hand if needed.
         driver.Navigate().GoToUrl("https://www.nexusmods.com/");
-        Console.WriteLine("Nếu còn Cloudflare check hoặc chưa đăng nhập: xử lý trong trình duyệt rồi ấn ENTER để tiếp tục...");
+        Console.WriteLine("If there is still a Cloudflare check or you are not logged in: handle it in the browser, then press ENTER to continue...");
         Console.ReadLine();
 
-        // Mở trang collection
+        // Open the collection page
         driver.Navigate().GoToUrl(CollectionUrl);
         Thread.Sleep(4000);
 
-        // ====== PHASE 1: Thu thập link mod ======
+        // ====== PHASE 1: Collect mod links ======
         var modLinks = CollectModLinks(driver, gameDomain)
             .Skip(SkipIndex)
             .ToList();
 
-        Console.WriteLine($"Tìm thấy {modLinks.Count} mod trong collection.");
+        Console.WriteLine($"Found {modLinks.Count} mods in the collection.");
         if (modLinks.Count == 0)
         {
-            Console.WriteLine("Không lấy được link mod nào. Kiểm tra lại CollectionUrl / đăng nhập / selector.");
+            Console.WriteLine("No mod links collected. Check CollectionUrl / login / selectors.");
             driver.Quit();
             return;
         }
 
-        // ====== PHASE 2: Tải từng mod ======
-        var mainTab = driver.WindowHandles.First();
+        // ====== PHASE 2: Download each mod (open in a new tab) ======
+        string mainTab = driver.WindowHandles.First();
 
+        int index = 0;
         foreach (var modUrl in modLinks)
         {
-            // Chuẩn hoá về tab Files của mod
+            index++;
+
+            // Normalize to the mod's Files tab
             string filesUrl = modUrl.Contains("?") ? modUrl + "&tab=files" : modUrl + "?tab=files";
-
-            // Mở tab mới
-            ((IJavaScriptExecutor)driver).ExecuteScript("window.open(arguments[0], '_blank');", filesUrl);
-            Thread.Sleep(1000);
-
-            // Chuyển sang tab mới
-            var tabs = driver.WindowHandles;
-            driver.SwitchTo().Window(tabs.Last());
-
-            // Đợi trang tải xong
-            Thread.Sleep(4000);
+            Console.WriteLine($"[{index}/{modLinks.Count}] {filesUrl}");
 
             try
             {
-                // 1) Bấm nút "Manual" (tải thủ công) trên tab Files
-                var manualButton = driver.FindElement(By.CssSelector("a.btn[href*='file_id']"));
-                ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", manualButton);
+                // Open the mod's Files tab in a NEW browser tab and switch to it
+                ((IJavaScriptExecutor)driver).ExecuteScript("window.open(arguments[0], '_blank');", filesUrl);
+                Thread.Sleep(1000);
+                driver.SwitchTo().Window(driver.WindowHandles.Last());
                 Thread.Sleep(4000);
 
-                // 2) Trang trung gian -> bấm "Slow download"
+                // 1) Click the "Manual" button on the file card -> a popup appears
+                IWebElement? manualBtn = null;
+                WaitFor(() => { manualBtn = FindByText(driver, "button", "Manual"); return manualBtn != null; }, 8000);
+                if (manualBtn == null)
+                {
+                    Console.WriteLine("  'Manual' button not found -> skip.");
+                }
+                else
+                {
+                    ClickJs(driver, manualBtn);
+
+                    // 2) In the popup, click the "Manual download" link (href .../api/files/<id>/download)
+                    IWebElement? manualDl = null;
+                    WaitFor(() =>
+                    {
+                        manualDl = driver.FindElements(By.CssSelector("a[href*='/api/files/']")).FirstOrDefault()
+                                   ?? FindByText(driver, "a", "Manual download");
+                        return manualDl != null;
+                    }, 6000);
+
+                    if (manualDl != null)
+                        ClickJs(driver, manualDl);
+                    else
+                        Console.WriteLine("  'Manual download' link not found.");
+
+                    // 3) Click the "Slow download" button (free tier)
+                    IWebElement? slowBtn = null;
+                    WaitFor(() => { slowBtn = FindByText(driver, "button", "Slow download"); return slowBtn != null; }, 8000);
+
+                    if (slowBtn != null)
+                        ClickJs(driver, slowBtn);
+                    else
+                        Console.WriteLine("  'Slow download' button not found (maybe Premium / already downloading).");
+                }
+
+                // Wait ~6s for the download to start
+                Thread.Sleep(6000);
+            }
+            catch (WebDriverException ex)
+            {
+                Console.WriteLine("  Error while processing mod: " + ex.Message);
+            }
+            finally
+            {
+                // Close the mod tab and go back to the collection tab
                 try
                 {
-                    var slowButton = driver.FindElement(By.CssSelector("#slowDownloadButton"));
-                    ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", slowButton);
+                    if (driver.WindowHandles.Count > 1)
+                    {
+                        driver.Close();
+                        driver.SwitchTo().Window(mainTab);
+                    }
                 }
-                catch (NoSuchElementException)
-                {
-                    // Tài khoản Premium: tải trực tiếp, không có nút slow download
-                    Console.WriteLine("Không thấy nút Slow download (có thể là tài khoản Premium): " + modUrl);
-                }
+                catch (WebDriverException) { }
             }
-            catch (NoSuchElementException)
-            {
-                Console.WriteLine("Không tìm thấy nút tải trong mod: " + modUrl);
-                driver.Close();
-                driver.SwitchTo().Window(mainTab);
-                continue;
-            }
-
-            // Gọi handler để xử lý IDM popup (Enter = Start, Ctrl+P = Pause)
-            IDMHandler.HandleIDMWindow();
-
-            Thread.Sleep(6000);
-
-            driver.Close();                    // đóng tab mod
-            driver.SwitchTo().Window(mainTab); // quay lại tab collection
         }
 
         driver.Quit();
-        Console.WriteLine("Hoàn tất!");
+        Console.WriteLine("Done!");
     }
 
-    // Tắt mọi tiến trình Edge/driver còn chạy để giải phóng khoá profile
+    // Kill any running Edge/driver processes to release the profile lock
     static void KillEdgeProcesses()
     {
         foreach (var name in new[] { "msedge", "msedgedriver" })
@@ -169,23 +190,27 @@ class Program
             {
                 try
                 {
-                    p.Kill(true);          // kill cả cây tiến trình con
+                    p.Kill(true);          // kill the whole process tree
                     p.WaitForExit(3000);
                 }
-                catch { /* đã thoát / không kill được -> bỏ qua */ }
+                catch { /* already exited / cannot kill -> ignore */ }
             }
         }
-        Thread.Sleep(1000); // chờ Windows giải phóng file lock (SingletonLock)
+        Thread.Sleep(1000); // wait for Windows to release the file lock (SingletonLock)
     }
 
-    // Lấy game domain (segment ngay sau host) từ CollectionUrl
+    // Get the game domain (the path segment right after the host) from CollectionUrl
     static string ParseGameDomain(string collectionUrl)
     {
         try
         {
             var uri = new Uri(collectionUrl);
             var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            return segments.Length > 0 ? segments[0] : "";
+            if (segments.Length == 0) return "";
+            // New URL format: /games/<domain>/collections/... -> drop the "games" prefix
+            if (segments[0].Equals("games", StringComparison.OrdinalIgnoreCase) && segments.Length > 1)
+                return segments[1];
+            return segments[0];
         }
         catch
         {
@@ -193,62 +218,51 @@ class Program
         }
     }
 
-    // Chỉ khớp link trang mod thật: .../mods/<số> (loại /mods (không id) và /collections/...)
+    // Matches real mod-page links only: .../mods/<number> (excludes /mods without id and /collections/...)
     static readonly Regex ModLinkRegex = new Regex(@"/mods/\d+(\b|$|[/?#])");
 
-    // ====== PHASE 1: Thu thập tất cả link trang mod trong collection ======
-    // Trang collection mới render dạng BẢNG: mỗi mod là 1 <tr class="collection-mod-row">,
-    // tên mod chỉ là <span> (không có link). Link trang mod chỉ xuất hiện khi HOVER vào dòng
-    // -> site sinh ra <div data-floating-ui-portal> chứa thẻ <a href=".../mods/<id>">.
-    static List<string> CollectModLinks(IWebDriver driver, string gameDomain)
+    // ====== PHASE 1: Collect every mod-page link in the collection ======
+    // The new collection page renders a TABLE: each mod is a <tr class="collection-mod-row">,
+    // and the mod name is just a <span> (no link). The mod link only appears when you HOVER a row
+    // -> the site creates a <div data-floating-ui-portal> containing an <a href=".../mods/<id>">.
+    static List<string> CollectModLinks(EdgeDriver driver, string gameDomain)
     {
-        // Chờ bảng mod load xong
+        // Wait for the mod table to load
         WaitFor(() => driver.FindElements(By.CssSelector("tr.collection-mod-row")).Count > 0, 20000);
 
         var rows = driver.FindElements(By.CssSelector("tr.collection-mod-row"));
         int rowCount = rows.Count;
-        Console.WriteLine($"[Mods] Tìm thấy {rowCount} dòng mod trong bảng.");
+        Console.WriteLine($"[Mods] Found {rowCount} mod rows in the table.");
 
         var result = new List<string>();
-        var actions = new Actions(driver);
 
         for (int i = 0; i < rowCount; i++)
         {
-            // Re-fetch theo index vì DOM có thể thay đổi (portal/expand) làm element stale
+            // Re-fetch by index because the DOM can change (portal) and make the element stale
             var freshRows = driver.FindElements(By.CssSelector("tr.collection-mod-row"));
             if (i >= freshRows.Count) break;
             var row = freshRows[i];
 
             try
             {
-                // Phần tử hover: ô tên mod (fallback: cả dòng)
+                // Hover target: the mod-name cell (fallback: the whole row)
                 var hoverTarget = row.FindElements(By.CssSelector(".collection-mod-row__mod-name-container"))
                                      .FirstOrDefault() ?? row;
 
                 ((IJavaScriptExecutor)driver).ExecuteScript(
                     "arguments[0].scrollIntoView({block:'center'});", hoverTarget);
-                actions.MoveToElement(hoverTarget).Perform();
+                Thread.Sleep(150);
 
-                // Chờ portal (hoặc bất kỳ link /mods/<id> mới) xuất hiện
+                // Real hover via CDP -> floating-ui builds the tooltip portal.
+                // (Actions.MoveToElement does not trigger the tooltip, it only expands the row.)
+                HoverElementCdp(driver, hoverTarget);
+
                 string? href = null;
                 WaitFor(() =>
                 {
                     href = FindModHref(driver);
                     return href != null;
-                }, timeoutMs: 2500);
-
-                // Fallback: nếu hover không ra link, thử bấm nút mũi tên để mở rộng dòng
-                if (href == null)
-                {
-                    var arrow = row.FindElements(By.CssSelector("button.collection-mod-row__arrow-button"))
-                                   .FirstOrDefault();
-                    if (arrow != null)
-                    {
-                        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", arrow);
-                        WaitFor(() => { href = FindModHref(driver); return href != null; }, 2500);
-                        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", arrow); // thu gọn lại
-                    }
-                }
+                }, timeoutMs: 3000);
 
                 if (!string.IsNullOrEmpty(href) && !result.Contains(href))
                 {
@@ -257,23 +271,23 @@ class Program
                 }
                 else if (href == null)
                 {
-                    Console.WriteLine($"  [--/{rowCount}] Không lấy được link ở dòng {i + 1}");
+                    Console.WriteLine($"  [--/{rowCount}] Could not get a link for row {i + 1}");
                 }
 
-                // Rời chuột để đóng portal trước khi sang dòng kế
-                actions.MoveToElement(driver.FindElement(By.TagName("h1"))).Perform();
+                // Move the cursor to the top-left corner to close the tooltip before the next row
+                DispatchMouseMove(driver, 2, 2);
                 Thread.Sleep(120);
             }
             catch (WebDriverException)
             {
-                // dòng stale / không hover được -> bỏ qua
+                // stale row / cannot hover -> skip
             }
         }
 
         return result.Distinct().ToList();
     }
 
-    // Tìm 1 href trỏ tới trang mod (.../mods/<id>) trong portal hiện đang mở
+    // Find one href that points to a mod page (.../mods/<id>) inside the currently open portal
     static string? FindModHref(IWebDriver driver)
     {
         return driver
@@ -284,7 +298,54 @@ class Program
                                  && !h.Contains("/collections/"));
     }
 
-    // Helper: chờ điều kiện cond đúng, poll mỗi stepMs (không cần thêm NuGet)
+    // Real hover over the center of an element via CDP Input.dispatchMouseEvent
+    static void HoverElementCdp(EdgeDriver driver, IWebElement el)
+    {
+        var coords = (System.Collections.IList)((IJavaScriptExecutor)driver).ExecuteScript(
+            "var r = arguments[0].getBoundingClientRect();" +
+            "return [r.left + r.width / 2, r.top + r.height / 2];", el);
+
+        double x = Convert.ToDouble(coords[0]);
+        double y = Convert.ToDouble(coords[1]);
+        DispatchMouseMove(driver, x, y);
+    }
+
+    // Send a real mouse-move event to viewport coordinates (x, y)
+    static void DispatchMouseMove(EdgeDriver driver, double x, double y)
+    {
+        try
+        {
+            driver.ExecuteCdpCommand("Input.dispatchMouseEvent", new Dictionary<string, object>
+            {
+                ["type"] = "mouseMoved",
+                ["x"] = x,
+                ["y"] = y
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("CDP mouseMoved error: " + ex.Message);
+        }
+    }
+
+    // Find the first element matching a CSS selector whose visible text equals `text`
+    static IWebElement? FindByText(IWebDriver driver, string css, string text)
+    {
+        return driver.FindElements(By.CssSelector(css))
+            .FirstOrDefault(e =>
+            {
+                try { return string.Equals((e.Text ?? "").Trim(), text, StringComparison.OrdinalIgnoreCase); }
+                catch (WebDriverException) { return false; }
+            });
+    }
+
+    // Click an element via JavaScript (robust against overlays / interception)
+    static void ClickJs(IWebDriver driver, IWebElement el)
+    {
+        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].click();", el);
+    }
+
+    // Helper: wait until cond() is true, polling every stepMs (no extra NuGet needed)
     static bool WaitFor(Func<bool> cond, int timeoutMs, int stepMs = 300)
     {
         int waited = 0;
@@ -296,7 +357,7 @@ class Program
             }
             catch (WebDriverException)
             {
-                // element chưa sẵn sàng -> thử lại
+                // element not ready yet -> retry
             }
             Thread.Sleep(stepMs);
             waited += stepMs;

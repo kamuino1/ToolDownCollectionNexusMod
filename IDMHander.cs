@@ -14,19 +14,19 @@ class IDMHandler
 
     public static void HandleIDMWindow()
     {
-        Console.WriteLine("Chờ cửa sổ IDM bật lên...");
+        Console.WriteLine("Waiting for the IDM window to pop up...");
 
-        for (int i = 0; i < 20; i++) // Tối đa 10 giây (20 x 500ms)
+        for (int i = 0; i < 20; i++) // Up to 10 seconds (20 x 500ms)
         {
             var hWnd = FindWindow(null, "Download File Info");
             if (hWnd != IntPtr.Zero)
             {
-                Console.WriteLine("Đã phát hiện cửa sổ IDM");
+                Console.WriteLine("IDM window detected");
 
                 SetForegroundWindow(hWnd);
                 Thread.Sleep(1000);
 
-                SendKeys.SendWait("{ENTER}"); // Nhấn nút Start Download
+                SendKeys.SendWait("{ENTER}"); // Press the Start Download button
                 Thread.Sleep(6000);
                 SendKeys.SendWait("^p");      // Ctrl + P: Pause download
 
