@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToolDownCollectionNexusMod"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RetryFailedMods", "RetryFailedMods\RetryFailedMods.csproj", "{3B90FE5A-80AB-41C8-BB1F-BDDBAEAB90D5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexusShared", "NexusShared\NexusShared.csproj", "{40671D40-E5AA-440E-B6D1-D4165768EDBA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{3B90FE5A-80AB-41C8-BB1F-BDDBAEAB90D5}.Release|x64.Build.0 = Release|Any CPU
 		{3B90FE5A-80AB-41C8-BB1F-BDDBAEAB90D5}.Release|x86.ActiveCfg = Release|Any CPU
 		{3B90FE5A-80AB-41C8-BB1F-BDDBAEAB90D5}.Release|x86.Build.0 = Release|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Debug|x64.Build.0 = Debug|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Debug|x86.Build.0 = Debug|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Release|x64.ActiveCfg = Release|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Release|x64.Build.0 = Release|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Release|x86.ActiveCfg = Release|Any CPU
+		{40671D40-E5AA-440E-B6D1-D4165768EDBA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

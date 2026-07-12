@@ -9,12 +9,13 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
-	<!-- RetryFailedMods is a separate project living in a subfolder; don't compile it into this one -->
+	<!-- RetryFailedMods and NexusShared are separate projects living in subfolders;
+	     don't compile their sources into this one -->
 	<ItemGroup>
-		<Compile Remove="RetryFailedMods\**" />
-		<Content Remove="RetryFailedMods\**" />
-		<None Remove="RetryFailedMods\**" />
-		<EmbeddedResource Remove="RetryFailedMods\**" />
+		<Compile Remove="RetryFailedMods\**;NexusShared\**" />
+		<Content Remove="RetryFailedMods\**;NexusShared\**" />
+		<None Remove="RetryFailedMods\**;NexusShared\**" />
+		<EmbeddedResource Remove="RetryFailedMods\**;NexusShared\**" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -26,6 +27,10 @@
 		<None Update="idm-handler.exe">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="NexusShared\NexusShared.csproj" />
 	</ItemGroup>
 
 </Project>
