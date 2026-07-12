@@ -84,15 +84,14 @@ static class Collector
                     "arguments[0].scrollIntoView({block:'center'});", nameEl);
                 Thread.Sleep(150);
 
-                // Real hover via CDP -> floating-ui builds the tooltip portal
-                HoverElementCdp(driver, nameEl);
-
+                // Re-trigger the hover on every poll so a transient miss just retries.
                 string? href = null;
                 Dom.WaitFor(() =>
                 {
+                    HoverElementCdp(driver, nameEl);
                     href = FindModHrefValidated(driver, nameEl);
                     return href != null;
-                }, timeoutMs: 3000);
+                }, timeoutMs: 4000, stepMs: 400);
 
                 if (!string.IsNullOrEmpty(href))
                 {
@@ -152,7 +151,29 @@ return null;
         }
     }
 
-    // Real hover over the center of an element via CDP Input.dispatchMouseEvent
+    // JS that fires real pointer/mouse hover events on the element (and its inner span),
+    // so floating-ui's React hover handlers flip even when a raw CDP move doesn't register.
+    const string SyntheticHoverJs = @"
+const el = arguments[0];
+const r = el.getBoundingClientRect();
+const x = r.left + r.width / 2, y = r.top + r.height / 2;
+const targets = [el];
+const span = el.querySelector('span, [aria-describedby]');
+if (span) targets.push(span);
+for (const t of targets){
+  const base = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+  const pbase = Object.assign({ pointerType: 'mouse', pointerId: 1, isPrimary: true }, base);
+  t.dispatchEvent(new PointerEvent('pointerover', pbase));
+  t.dispatchEvent(new PointerEvent('pointerenter', pbase));
+  t.dispatchEvent(new MouseEvent('mouseover', base));
+  t.dispatchEvent(new MouseEvent('mouseenter', base));
+  t.dispatchEvent(new PointerEvent('pointermove', pbase));
+  t.dispatchEvent(new MouseEvent('mousemove', base));
+}
+";
+
+    // Hover the center of an element. Uses a two-step CDP move (to force a real mouseenter
+    // transition) plus synthetic pointer/mouse events as a reliable fallback.
     static void HoverElementCdp(EdgeDriver driver, IWebElement el)
     {
         var coords = (System.Collections.IList)((IJavaScriptExecutor)driver).ExecuteScript(
@@ -161,7 +182,15 @@ return null;
 
         double x = Convert.ToDouble(coords[0]);
         double y = Convert.ToDouble(coords[1]);
+
+        // Two-step move: a nearby offset point, then the center -> creates an enter transition
+        DispatchMouseMove(driver, x - 20, y - 20);
+        Thread.Sleep(40);
         DispatchMouseMove(driver, x, y);
+
+        // Belt-and-suspenders: also dispatch synthetic hover events on the element
+        try { ((IJavaScriptExecutor)driver).ExecuteScript(SyntheticHoverJs, el); }
+        catch (WebDriverException) { }
     }
 
     // Send a real mouse-move event to viewport coordinates (x, y)
