@@ -50,6 +50,23 @@ static class Collector
         return result;
     }
 
+    // Append scraped titles to `mods`, ignoring any whose name is already present (`known`).
+    // `known` is updated so duplicate titles within the scrape are also skipped.
+    public static void AddNewTitles(List<ModEntry> mods, List<ModEntry> scraped, HashSet<string> known)
+    {
+        int added = 0, ignored = 0;
+        foreach (var s in scraped)
+        {
+            string key = (s.Name ?? "").Trim();
+            if (key.Length == 0) continue;
+            if (known.Contains(key)) { ignored++; continue; }
+            mods.Add(new ModEntry { Name = s.Name, Url = "", Status = "pending" });
+            known.Add(key);
+            added++;
+        }
+        Console.WriteLine($"[Merge] {added} new, {ignored} ignored (already in list).");
+    }
+
     // ====== PHASE 1b: fill the link for every mod (hover each row) ======
     public static void FillLinks(EdgeDriver driver, List<ModEntry> mods, Action persist)
     {
@@ -95,9 +112,21 @@ static class Collector
 
                 if (!string.IsNullOrEmpty(href))
                 {
-                    mod.Url = href;
-                    Console.WriteLine($"  [{i + 1}/{mods.Count}] {mod.Name} -> {href}");
-                    Set(mod, "link-ok");
+                    // Safety: if this link already belongs to another entry, don't duplicate it.
+                    // Leave Url blank so Phase 2 skips it.
+                    bool dup = mods.Any(o => !ReferenceEquals(o, mod)
+                                             && string.Equals(o.Url, href, StringComparison.OrdinalIgnoreCase));
+                    if (dup)
+                    {
+                        Console.WriteLine($"  [{i + 1}/{mods.Count}] duplicate link, ignoring ({mod.Name})");
+                        Set(mod, "duplicate");
+                    }
+                    else
+                    {
+                        mod.Url = href;
+                        Console.WriteLine($"  [{i + 1}/{mods.Count}] {mod.Name} -> {href}");
+                        Set(mod, "link-ok");
+                    }
                 }
                 else
                 {

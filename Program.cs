@@ -23,15 +23,30 @@ class Program
     // Folder where the progress CSV is written
     const string OutputDir = @"D:\1\Tool\ToolDownCollectionNexusMod";
 
-    // Progress file; the date/time is stamped into the name when the program starts,
-    // e.g. collection_progress_2026-07-12_01-15-03.csv
-    static readonly string OutputCsvPath =
-        Path.Combine(OutputDir, $"collection_progress_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.csv");
+    // Set to an existing progress CSV to RESUME from it: those entries are loaded first and
+    // Phase 1 ignores any collection mod already recorded (by name). Leave "" for a fresh run.
+    const string ResumeFromCsv = "";
+
+    // true when ResumeFromCsv points at an existing file
+    static readonly bool Resuming = !string.IsNullOrWhiteSpace(ResumeFromCsv) && File.Exists(ResumeFromCsv);
+
+    // Progress file: when resuming we write back to the same file; otherwise a fresh timestamped
+    // name, e.g. collection_progress_2026-07-12_01-15-03.csv
+    static readonly string OutputCsvPath = Resuming
+        ? ResumeFromCsv
+        : Path.Combine(OutputDir, $"collection_progress_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.csv");
 
     static void Main()
     {
         string gameDomain = Collector.ParseGameDomain(CollectionUrl);
         Console.WriteLine($"Game domain: {gameDomain}");
+
+        // Resume: load existing entries (if configured). The loaded list is our working list;
+        // Phase 1 will not re-add / re-hover mods already recorded here.
+        var mods = Resuming ? CsvStore.Load(OutputCsvPath) : new List<ModEntry>();
+        if (Resuming) Console.WriteLine($"Resuming from {OutputCsvPath} ({mods.Count} existing entries).");
+        var known = new HashSet<string>(
+            mods.Select(m => (m.Name ?? "").Trim()), StringComparer.OrdinalIgnoreCase);
 
         EdgeFactory.KillEdgeProcesses();
         var driver = EdgeFactory.Create(DriverPath, UserDataDir, ProfileDirectory);
@@ -46,27 +61,28 @@ class Program
         driver.Navigate().GoToUrl(CollectionUrl);
         Thread.Sleep(4000);
 
-        // ====== PHASE 1a: collect all mod titles (no hover) and write the CSV up front ======
-        var mods = Collector.CollectTitles(driver)
+        // ====== PHASE 1a: scrape titles, append only mods not already in the list ======
+        var scraped = Collector.CollectTitles(driver)
             .Skip(SkipIndex)
             .ToList();
+        Collector.AddNewTitles(mods, scraped, known);
 
         for (int i = 0; i < mods.Count; i++)
         {
             mods[i].Index = i + 1;
-            mods[i].Status = "pending";
-            mods[i].UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            if (string.IsNullOrEmpty(mods[i].UpdatedAt))
+                mods[i].UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         }
 
         void Persist() => CsvStore.Save(OutputCsvPath, mods);
 
-        Console.WriteLine($"Found {mods.Count} mods in the collection.");
-        Persist(); // titles CSV (Url still blank)
+        Console.WriteLine($"Total mods now: {mods.Count}.");
+        Persist(); // write CSV up front (loaded + new titles)
         Console.WriteLine($"Progress file: {OutputCsvPath}");
 
         if (mods.Count == 0)
         {
-            Console.WriteLine("No mod titles collected. Check CollectionUrl / login / selectors.");
+            Console.WriteLine("No mods. Check CollectionUrl / login / selectors.");
             driver.Quit();
             return;
         }
