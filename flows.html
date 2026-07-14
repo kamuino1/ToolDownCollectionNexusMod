@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NexusMods Downloader — Tool Flows</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --ink: #1c2128;
+    --muted: #5b6672;
+    --line: #d7dce2;
+    --code-bg: #eef1f4;
+    --c-start: #6b7280;
+    --c-p1: #2563eb;
+    --c-p2: #7c3aed;
+    --c-done: #16a34a;
+    --c-warn: #d97706;
+    --c-fail: #dc2626;
+    --shared: #f59e0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #9aa4b0;
+      --line: #2a313a; --code-bg: #232a32;
+      --c-p1: #60a5fa; --c-p2: #a78bfa; --c-done: #4ade80; --c-warn: #fbbf24; --c-fail: #f87171;
+      --c-start: #9aa4b0; --shared: #fbbf24;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #9aa4b0;
+    --line: #2a313a; --code-bg: #232a32;
+    --c-p1: #60a5fa; --c-p2: #a78bfa; --c-done: #4ade80; --c-warn: #fbbf24; --c-fail: #f87171;
+    --c-start: #9aa4b0; --shared: #fbbf24;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2128; --muted: #5b6672;
+    --line: #d7dce2; --code-bg: #eef1f4;
+    --c-p1: #2563eb; --c-p2: #7c3aed; --c-done: #16a34a; --c-warn: #d97706; --c-fail: #dc2626;
+    --c-start: #6b7280; --shared: #f59e0b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    padding: 32px 20px 64px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 18px; margin: 0 0 14px; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px;
+         font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.86em; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 28px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+
+  .col { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 22px; }
+  .col > .tag { font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .col > h2 { margin-top: 2px; }
+  .proj { font-family: ui-monospace, Consolas, monospace; }
+
+  .flow { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+  .step {
+    position: relative; border: 1px solid var(--line); border-left: 4px solid var(--c-start);
+    background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .step + .step { margin-top: 26px; }
+  .step + .step::before {
+    content: "▼"; position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
+    color: var(--muted); font-size: 12px; }
+  .step .n { font-weight: 700; margin-right: 6px; }
+  .step .d { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .step.p1 { border-left-color: var(--c-p1); }
+  .step.p2 { border-left-color: var(--c-p2); }
+  .step.done { border-left-color: var(--c-done); }
+  .step.shared { border-left-color: var(--shared); border-style: dashed; }
+
+  .phase { margin: 22px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; }
+  .phase.p1 { color: var(--c-p1); }
+  .phase.p2 { color: var(--c-p2); }
+
+  .panel2 { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+            padding: 18px; margin-top: 24px; }
+  .panel2.shared { border-color: var(--shared); }
+  .substeps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+  .sub-b { border: 1px solid var(--line); border-top: 3px solid var(--c-p2); border-radius: 10px;
+           padding: 10px 12px; background: var(--bg); font-size: 13px; }
+  .sub-b b { display: block; margin-bottom: 3px; font-size: 13px; }
+  .sub-b .s { color: var(--muted); font-size: 12px; }
+
+  .life { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .pill { border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 600; border: 1px solid var(--line); }
+  .pill.s { color: var(--c-start); }
+  .pill.p1 { color: var(--c-p1); border-color: var(--c-p1); }
+  .pill.p2 { color: var(--c-p2); border-color: var(--c-p2); }
+  .pill.done { color: var(--c-done); border-color: var(--c-done); }
+  .pill.warn { color: var(--c-warn); border-color: var(--c-warn); }
+  .arrow { color: var(--muted); }
+  .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>NexusMods Downloader — Tool Flows</h1>
+  <p class="sub">Two console tools in one solution, sharing <code>NexusShared</code> (EdgeFactory · CsvStore · Dom · <b>Phase2</b> · ModEntry).</p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--c-start)"></i> setup / browser</span>
+    <span><i class="dot" style="background:var(--c-p1)"></i> Phase 1 — collect &amp; link</span>
+    <span><i class="dot" style="background:var(--c-p2)"></i> Phase 2 — download (shared)</span>
+    <span><i class="dot" style="background:var(--c-done)"></i> finish</span>
+    <span><i class="dot" style="background:var(--shared)"></i> shared library call</span>
+  </div>
+
+  <div class="cols">
+    <!-- FLOW 1 -->
+    <div class="col">
+      <div class="tag">Flow 1 · Collection tool</div>
+      <h2 class="proj">ToolDownCollectionNexusMod</h2>
+      <div class="flow">
+        <div class="step"><span class="n">1</span>Parse game domain
+          <div class="d"><code>Collector.ParseGameDomain(CollectionUrl)</code> → e.g. <code>stardewvalley</code></div></div>
+        <div class="step"><span class="n">2</span>Resume load
+          <div class="d"><code>mods = Resuming ? CsvStore.Load(OutputCsvPath) : new()</code>; build <code>known</code> = existing names</div></div>
+        <div class="step"><span class="n">3</span>Launch Edge
+          <div class="d"><code>EdgeFactory.KillEdgeProcesses()</code> → <code>Create(...)</code> (profile + anti-detection + hide <code>navigator.webdriver</code>)</div></div>
+        <div class="step"><span class="n">4</span>Login gate
+          <div class="d">open <code>nexusmods.com</code> → <b>ENTER</b> pause (clear Cloudflare / sign in)</div></div>
+        <div class="step"><span class="n">5</span>Open collection <code>?tab=mods</code></div>
+
+        <div class="phase p1">Phase 1a · titles</div>
+        <div class="step p1"><span class="n">6</span>Scrape titles (no hover)
+          <div class="d"><code>Collector.CollectTitles</code> — one JS call reads every <code>.collection-mod-row__mod-name-container</code></div></div>
+        <div class="step p1"><span class="n">7</span>Merge new only
+          <div class="d"><code>AddNewTitles(mods, scraped, known)</code> — append titles whose name isn't already in the list → save CSV</div></div>
+
+        <div class="phase p1">Phase 1b · links</div>
+        <div class="step p1"><span class="n">8</span>Fill links (hover)
+          <div class="d"><code>FillLinks</code>: for each <b>blank-Url</b> row → <code>HoverElementCdp</code> (2-step CDP move + synthetic events) → <code>FindModHrefValidated</code> (aria-describedby → portal id → &lt;a title&gt; == name → href). Rows that already have a Url are skipped. Saves each row.</div></div>
+
+        <div class="phase p2">Phase 2 · download</div>
+        <div class="step shared"><span class="n">9</span>Download (shared)
+          <div class="d"><code>Phase2.Run(driver, mods, persist)</code> → see box below</div></div>
+
+        <div class="step done"><span class="n">10</span>Finish
+          <div class="d"><code>driver.Quit()</code> + final save</div></div>
+      </div>
+    </div>
+
+    <!-- FLOW 2 -->
+    <div class="col">
+      <div class="tag">Flow 2 · Retry tool</div>
+      <h2 class="proj">RetryFailedMods</h2>
+      <div class="flow">
+        <div class="step"><span class="n">1</span>Load CSV → ModEntry
+          <div class="d"><code>mods = CsvStore.Load(CsvPath)</code> — the loaded list <b>is</b> the input to Phase 2</div></div>
+        <div class="step"><span class="n">2</span>Count &amp; guard
+          <div class="d">count rows with a link and <code>status != done</code>; if none → exit</div></div>
+        <div class="step"><span class="n">3</span>Launch Edge
+          <div class="d"><code>EdgeFactory.KillEdgeProcesses()</code> → <code>Create(...)</code> (same profile)</div></div>
+        <div class="step"><span class="n">4</span>Login gate
+          <div class="d">open <code>nexusmods.com</code> → <b>ENTER</b> pause</div></div>
+
+        <div class="phase p2">Phase 2 · download</div>
+        <div class="step shared"><span class="n">5</span>Download (shared)
+          <div class="d"><code>Phase2.Run(driver, mods, persist)</code> — identical to Flow 1, see box below</div></div>
+
+        <div class="step done"><span class="n">6</span>Finish
+          <div class="d"><code>driver.Quit()</code> + save CSV in place</div></div>
+      </div>
+      <p class="note">Only difference vs Flow 1: the <code>ModEntry</code> list comes from the <b>CSV</b> instead of scraping the page. Everything after is the same shared Phase 2.</p>
+    </div>
+  </div>
+
+  <!-- SHARED PHASE 2 -->
+  <div class="panel2 shared">
+    <h2>Shared · <code>NexusShared.Phase2.Run(driver, mods, persist)</code></h2>
+    <p class="sub" style="margin:0 0 4px">Per mod: <b>skip</b> if Url is blank or status is <code>done</code>; otherwise:</p>
+    <div class="substeps">
+      <div class="sub-b"><b>Open</b><span class="s">new tab → <code>…/mods/&lt;id&gt;?tab=files</code> → status <code>opened</code></span></div>
+      <div class="sub-b"><b>Manual</b><span class="s"><code>Dom.DeepClick("button","Manual")</code> — pierces the <code>&lt;mod-download-modal&gt;</code> shadow DOM</span></div>
+      <div class="sub-b"><b>Manual download</b><span class="s"><code>DeepClick("a[href*='/api/files/']")</code></span></div>
+      <div class="sub-b"><b>Slow download</b><span class="s"><code>DeepClick("button","Slow download")</code></span></div>
+      <div class="sub-b"><b>Settle &amp; close</b><span class="s">wait ~6s → <code>done</code> → close tab, back to collection</span></div>
+    </div>
+    <p class="note">A failure at any step is recorded (<code>manual-not-found</code> / <code>manualdl-not-found</code> / <code>slow-not-found</code> / <code>error: …</code>) and the run moves on. <code>persist</code> writes the whole CSV after every status change, so the file is always a live snapshot.</p>
+  </div>
+
+  <!-- STATUS LIFECYCLE -->
+  <div class="panel2">
+    <h2>Status lifecycle (per mod)</h2>
+    <div class="life">
+      <span class="pill s">pending</span><span class="arrow">→</span>
+      <span class="pill p1">link-ok</span><span class="arrow">→</span>
+      <span class="pill p2">opened</span><span class="arrow">→</span>
+      <span class="pill p2">manual-clicked</span><span class="arrow">→</span>
+      <span class="pill p2">manualdl-clicked</span><span class="arrow">→</span>
+      <span class="pill p2">slow-clicked</span><span class="arrow">→</span>
+      <span class="pill done">done</span>
+    </div>
+    <div class="life">
+      <span class="note">off-ramps (blank Url → skipped by Phase 2):</span>
+      <span class="pill warn">link-failed</span>
+      <span class="pill warn">duplicate</span>
+      <span class="note">· Phase 2 failures:</span>
+      <span class="pill warn">manual-not-found</span>
+      <span class="pill warn">manualdl-not-found</span>
+      <span class="pill warn">slow-not-found</span>
+      <span class="pill warn">error: …</span>
+    </div>
+    <p class="note">CSV columns: <code>Index, Name, Url, Status, UpdatedAt</code> — UTF-8 with BOM, rewritten after every change.</p>
+  </div>
+</div>
+</body>
+</html>

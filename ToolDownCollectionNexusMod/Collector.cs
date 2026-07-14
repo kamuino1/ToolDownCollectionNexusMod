@@ -46,7 +46,7 @@ static class Collector
             result.Add(new ModEntry { Name = name, Url = "", Status = "pending" });
         }
 
-        Console.WriteLine($"[Titles] Collected {result.Count} mod titles.");
+        Logging.Line($"[Titles] Collected {result.Count} mod titles.");
         return result;
     }
 
@@ -64,7 +64,7 @@ static class Collector
             known.Add(key);
             added++;
         }
-        Console.WriteLine($"[Merge] {added} new, {ignored} ignored (already in list).");
+        Logging.Line($"[Merge] {added} new, {ignored} ignored (already in list).");
     }
 
     // ====== PHASE 1b: fill the link for every mod (hover each row) ======
@@ -74,7 +74,7 @@ static class Collector
         {
             mod.Status = status;
             mod.UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            Console.WriteLine($"    -> {status}");
+            Logging.Line($"    -> {status}");
             persist();
         }
 
@@ -89,7 +89,7 @@ static class Collector
                 var rows = driver.FindElements(By.CssSelector("tr.collection-mod-row"));
                 if (i >= rows.Count)
                 {
-                    Console.WriteLine($"  [{i + 1}/{mods.Count}] row missing -> link-failed ({mod.Name})");
+                    Logging.Line($"  [{i + 1}/{mods.Count}] row missing -> link-failed ({mod.Name})");
                     Set(mod, "link-failed");
                     continue;
                 }
@@ -118,19 +118,19 @@ static class Collector
                                              && string.Equals(o.Url, href, StringComparison.OrdinalIgnoreCase));
                     if (dup)
                     {
-                        Console.WriteLine($"  [{i + 1}/{mods.Count}] duplicate link, ignoring ({mod.Name})");
+                        Logging.Line($"  [{i + 1}/{mods.Count}] duplicate link, ignoring ({mod.Name})");
                         Set(mod, "duplicate");
                     }
                     else
                     {
                         mod.Url = href;
-                        Console.WriteLine($"  [{i + 1}/{mods.Count}] {mod.Name} -> {href}");
+                        Logging.Line($"  [{i + 1}/{mods.Count}] {mod.Name} -> {href}");
                         Set(mod, "link-ok");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"  [{i + 1}/{mods.Count}] link-failed ({mod.Name})");
+                    Logging.Line($"  [{i + 1}/{mods.Count}] link-failed ({mod.Name})");
                     Set(mod, "link-failed");
                 }
 
@@ -236,7 +236,7 @@ for (const t of targets){
         }
         catch (Exception ex)
         {
-            Console.WriteLine("CDP mouseMoved error: " + ex.Message);
+            Logging.Line("CDP mouseMoved error: " + ex.Message);
         }
     }
 }

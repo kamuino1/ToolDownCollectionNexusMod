@@ -46,7 +46,7 @@ public static class EdgeFactory
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Could not set CDP override (skipping): " + ex.Message);
+            Logging.Line("Could not set CDP override (skipping): " + ex.Message);
         }
 
         return driver;

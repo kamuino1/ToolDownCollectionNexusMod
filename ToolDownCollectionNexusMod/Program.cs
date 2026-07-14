@@ -38,13 +38,14 @@ class Program
 
     static void Main()
     {
+        Logging.Setup(Path.Combine(OutputDir, "logs", "collection-.log"));
         string gameDomain = Collector.ParseGameDomain(CollectionUrl);
-        Console.WriteLine($"Game domain: {gameDomain}");
+        Logging.Line($"Game domain: {gameDomain}");
 
         // Resume: load existing entries (if configured). The loaded list is our working list;
         // Phase 1 will not re-add / re-hover mods already recorded here.
         var mods = Resuming ? CsvStore.Load(OutputCsvPath) : new List<ModEntry>();
-        if (Resuming) Console.WriteLine($"Resuming from {OutputCsvPath} ({mods.Count} existing entries).");
+        if (Resuming) Logging.Line($"Resuming from {OutputCsvPath} ({mods.Count} existing entries).");
         var known = new HashSet<string>(
             mods.Select(m => (m.Name ?? "").Trim()), StringComparer.OrdinalIgnoreCase);
 
@@ -54,7 +55,7 @@ class Program
         // With a logged-in profile you usually don't need to log in again. Still pause once so you
         // can handle a Cloudflare check / login by hand if needed.
         driver.Navigate().GoToUrl("https://www.nexusmods.com/");
-        Console.WriteLine("If there is still a Cloudflare check or you are not logged in: handle it in the browser, then press ENTER to continue...");
+        Logging.Line("If there is still a Cloudflare check or you are not logged in: handle it in the browser, then press ENTER to continue...");
         Console.ReadLine();
 
         // Open the collection page
@@ -76,27 +77,29 @@ class Program
 
         void Persist() => CsvStore.Save(OutputCsvPath, mods);
 
-        Console.WriteLine($"Total mods now: {mods.Count}.");
+        Logging.Line($"Total mods now: {mods.Count}.");
         Persist(); // write CSV up front (loaded + new titles)
-        Console.WriteLine($"Progress file: {OutputCsvPath}");
+        Logging.Line($"Progress file: {OutputCsvPath}");
 
         if (mods.Count == 0)
         {
-            Console.WriteLine("No mods. Check CollectionUrl / login / selectors.");
+            Logging.Line("No mods. Check CollectionUrl / login / selectors.");
             driver.Quit();
+            Logging.Close();
             return;
         }
 
         // ====== PHASE 1b: fill the link for every mod (updates the CSV live) ======
         Collector.FillLinks(driver, mods, Persist);
         int linked = mods.Count(m => !string.IsNullOrWhiteSpace(m.Url));
-        Console.WriteLine($"Links filled: {linked}/{mods.Count}. Starting downloads...");
+        Logging.Line($"Links filled: {linked}/{mods.Count}. Starting downloads...");
 
         // ====== PHASE 2: download each mod (shared) ======
         Phase2.Run(driver, mods, Persist);
 
         driver.Quit();
         Persist();
-        Console.WriteLine("Done! Progress saved to: " + OutputCsvPath);
+        Logging.Line("Done! Progress saved to: " + OutputCsvPath);
+        Logging.Close();
     }
 }

@@ -45,7 +45,7 @@ public static class CsvStore
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Could not write progress file: " + ex.Message);
+            Logging.Line("Could not write progress file: " + ex.Message);
         }
     }
 

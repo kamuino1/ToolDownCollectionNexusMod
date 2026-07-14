@@ -17,23 +17,27 @@ class Program
 
     static void Main()
     {
+        Logging.Setup(Path.Combine(Path.GetDirectoryName(CsvPath) ?? ".", "logs", "retry-.log"));
+
         if (!File.Exists(CsvPath))
         {
-            Console.WriteLine("CSV not found: " + CsvPath);
+            Logging.Line("CSV not found: " + CsvPath);
+            Logging.Close();
             return;
         }
 
         // Load every row; the ModEntry list IS the input to Phase 2
         var mods = CsvStore.Load(CsvPath);
-        Console.WriteLine($"Loaded {mods.Count} rows from {CsvPath}");
+        Logging.Line($"Loaded {mods.Count} rows from {CsvPath}");
 
         int toRetry = mods.Count(m =>
             !string.IsNullOrWhiteSpace(m.Url) &&
             !string.Equals(m.Status?.Trim(), "done", StringComparison.OrdinalIgnoreCase));
-        Console.WriteLine($"{toRetry} mod(s) to retry (has link and status != done).");
+        Logging.Line($"{toRetry} mod(s) to retry (has link and status != done).");
         if (toRetry == 0)
         {
-            Console.WriteLine("Nothing to retry. Done.");
+            Logging.Line("Nothing to retry. Done.");
+            Logging.Close();
             return;
         }
 
@@ -42,7 +46,7 @@ class Program
 
         // Let the user handle any Cloudflare check / login before we start
         driver.Navigate().GoToUrl("https://www.nexusmods.com/");
-        Console.WriteLine("If there is still a Cloudflare check or you are not logged in: handle it in the browser, then press ENTER to continue...");
+        Logging.Line("If there is still a Cloudflare check or you are not logged in: handle it in the browser, then press ENTER to continue...");
         Console.ReadLine();
 
         // Shared Phase 2 (skips blank-Url and already-"done" rows itself)
@@ -51,6 +55,7 @@ class Program
         driver.Quit();
         CsvStore.Save(CsvPath, mods);
         int remaining = mods.Count(m => !string.Equals(m.Status?.Trim(), "done", StringComparison.OrdinalIgnoreCase));
-        Console.WriteLine($"Done! {mods.Count - remaining}/{mods.Count} mods now done. CSV: {CsvPath}");
+        Logging.Line($"Done! {mods.Count - remaining}/{mods.Count} mods now done. CSV: {CsvPath}");
+        Logging.Close();
     }
 }

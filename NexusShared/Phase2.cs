@@ -18,7 +18,7 @@ public static class Phase2
         {
             mod.Status = status;
             mod.UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            Console.WriteLine($"    -> {status}");
+            Logging.Line($"    -> {status}");
             persist();
         }
 
@@ -28,18 +28,18 @@ public static class Phase2
 
             if (string.IsNullOrWhiteSpace(mod.Url))
             {
-                Console.WriteLine($"[{n}/{total}] {mod.Name} -> no link, skipping.");
+                Logging.Line($"[{n}/{total}] {mod.Name} -> no link, skipping.");
                 continue;
             }
             if (string.Equals(mod.Status?.Trim(), "done", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine($"[{n}/{total}] {mod.Name} -> already done, skipping.");
+                Logging.Line($"[{n}/{total}] {mod.Name} -> already done, skipping.");
                 continue;
             }
 
             // Normalize to the mod's Files tab
             string filesUrl = mod.Url.Contains("?") ? mod.Url + "&tab=files" : mod.Url + "?tab=files";
-            Console.WriteLine($"[{n}/{total}] {mod.Name} -> {filesUrl}");
+            Logging.Line($"[{n}/{total}] {mod.Name} -> {filesUrl}");
 
             try
             {
@@ -58,7 +58,7 @@ public static class Phase2
                 Dom.WaitFor(() => { manualClicked = Dom.DeepClick(driver, "button", "Manual"); return manualClicked; }, 8000);
                 if (!manualClicked)
                 {
-                    Console.WriteLine("  'Manual' button not found -> skip.");
+                    Logging.Line("  'Manual' button not found -> skip.");
                     Set(mod, "manual-not-found");
                 }
                 else
@@ -74,7 +74,7 @@ public static class Phase2
                     }
                     else
                     {
-                        Console.WriteLine("  'Manual download' link not found.");
+                        Logging.Line("  'Manual download' link not found.");
                         Set(mod, "manualdl-not-found");
                     }
 
@@ -87,7 +87,7 @@ public static class Phase2
                     }
                     else
                     {
-                        Console.WriteLine("  'Slow download' button not found (maybe Premium / already downloading).");
+                        Logging.Line("  'Slow download' button not found (maybe Premium / already downloading).");
                         Set(mod, "slow-not-found");
                     }
                 }
@@ -100,7 +100,7 @@ public static class Phase2
             }
             catch (WebDriverException ex)
             {
-                Console.WriteLine("  Error while processing mod: " + ex.Message);
+                Logging.Line("  Error while processing mod: " + ex.Message);
                 Set(mod, "error: " + ex.Message.Replace("\r", " ").Replace("\n", " "));
             }
             finally

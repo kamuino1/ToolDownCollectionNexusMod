@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToolDownCollectionNexusMod", "ToolDownCollectionNexusMod.csproj", "{7B2E1D44-9AA6-744C-8942-94A01DEE61D8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToolDownCollectionNexusMod", "ToolDownCollectionNexusMod\ToolDownCollectionNexusMod.csproj", "{7B2E1D44-9AA6-744C-8942-94A01DEE61D8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RetryFailedMods", "RetryFailedMods\RetryFailedMods.csproj", "{3B90FE5A-80AB-41C8-BB1F-BDDBAEAB90D5}"
 EndProject

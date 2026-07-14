@@ -9,15 +9,6 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
-	<!-- RetryFailedMods and NexusShared are separate projects living in subfolders;
-	     don't compile their sources into this one -->
-	<ItemGroup>
-		<Compile Remove="RetryFailedMods\**;NexusShared\**" />
-		<Content Remove="RetryFailedMods\**;NexusShared\**" />
-		<None Remove="RetryFailedMods\**;NexusShared\**" />
-		<EmbeddedResource Remove="RetryFailedMods\**;NexusShared\**" />
-	</ItemGroup>
-
 	<ItemGroup>
 		<PackageReference Include="Selenium.WebDriver" Version="4.31.0" />
 		<PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="135.0.7049.8400" />
@@ -30,7 +21,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="NexusShared\NexusShared.csproj" />
+	  <ProjectReference Include="..\NexusShared\NexusShared.csproj" />
 	</ItemGroup>
 
 </Project>
